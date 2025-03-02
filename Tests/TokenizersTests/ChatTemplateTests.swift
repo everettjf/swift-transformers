@@ -27,11 +27,11 @@ class ChatTemplateTests: XCTestCase {
     func testDeepSeekQwenChatTemplate() async throws {
         let tokenizer = try await AutoTokenizer.from(pretrained: "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B")
         let encoded = try tokenizer.applyChatTemplate(messages: messages)
-        let encodedTarget = [151646, 151644, 74785, 279, 23670, 15473, 4128, 13, 151645]
+        let encodedTarget = [151646, 151644, 74785, 279, 23670, 15473, 4128, 13, 151645, 151648, 198]
         XCTAssertEqual(encoded, encodedTarget)
 
         let decoded = tokenizer.decode(tokens: encoded)
-        let decodedTarget = "<｜begin▁of▁sentence｜><｜User｜>Describe the Swift programming language.<｜Assistant｜>"
+        let decodedTarget = "<｜begin▁of▁sentence｜><｜User｜>Describe the Swift programming language.<｜Assistant｜><think>\n"
         XCTAssertEqual(decoded, decodedTarget)
     }
 
@@ -176,6 +176,44 @@ What is the weather in Paris today?<|im_end|>
 
         tokenizer = try await AutoTokenizer.from(pretrained: "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B")
         XCTAssertTrue(tokenizer.hasChatTemplate)
+    }
+
+    // Test for vision models with a vision chat template in chat_template.json
+    func testChatTemplateFromChatTemplateJson() async throws {
+        let visionMessages = [
+            [
+                "role": "user",
+                "content": [
+                    [
+                        "type": "text",
+                        "text": "What's in this image?",
+                    ] as [String: String],
+                    [
+                        "type": "image",
+                        "image_url": "example.jpg",
+                    ] as [String: String],
+                ] as [[String: String]],
+            ] as [String: Any]
+        ] as [[String: Any]]
+        // Qwen 2 VL does not have a chat_template.json file. The chat template is in tokenizer_config.json.
+        let qwen2VLTokenizer = try await AutoTokenizer.from(pretrained: "mlx-community/Qwen2-VL-7B-Instruct-4bit")
+        // Qwen 2.5 VL has a chat_template.json file with a different chat template than the one in tokenizer_config.json.
+        let qwen2_5VLTokenizer = try await AutoTokenizer.from(pretrained: "mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
+        let qwen2VLEncoded = try qwen2VLTokenizer.applyChatTemplate(messages: visionMessages)
+        let qwen2VLDecoded = qwen2VLTokenizer.decode(tokens: qwen2VLEncoded)
+        let qwen2_5VLEncoded = try qwen2_5VLTokenizer.applyChatTemplate(messages: visionMessages)
+        let qwen2_5VLDecoded = qwen2_5VLTokenizer.decode(tokens: qwen2_5VLEncoded)
+        let expectedOutput = """
+<|im_start|>system
+You are a helpful assistant.<|im_end|>
+<|im_start|>user
+What's in this image?<|vision_start|><|image_pad|><|vision_end|><|im_end|>
+<|im_start|>assistant
+
+"""
+        XCTAssertEqual(qwen2VLEncoded, qwen2_5VLEncoded, "Encoded sequences should be equal")
+        XCTAssertEqual(qwen2VLDecoded, qwen2_5VLDecoded, "Decoded sequences should be equal")
+        XCTAssertEqual(qwen2_5VLDecoded, expectedOutput, "Decoded sequence should match expected output")
     }
 
     func testApplyTemplateError() async throws {
